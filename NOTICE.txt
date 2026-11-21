@@ -1,0 +1,3 @@
+Copyright (C) 2026 Solo Music
+
+Solo Music Player is an original desktop application. This project is not affiliated with YouTube, Google, or the authors of Echo Music. Echo Music is used as a product reference for feature discovery and interaction patterns. No Android source files are included in this repository.
