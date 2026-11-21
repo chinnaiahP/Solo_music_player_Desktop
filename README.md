@@ -1,6 +1,6 @@
 # Solo Music Player
 
-Solo Music Player is a Windows-first desktop application that uses Echo Music as a feature reference while keeping its own name, code, and local data. It is built as a standalone Kotlin/JVM and Compose Desktop app; Android framework modules are not linked into it.
+Solo Music Player is a Windows desktop application built as a standalone Kotlin/JVM and Compose Desktop app. It provides local playback and music-library management without Android framework dependencies.
 
 ## Implemented desktop features
 
@@ -15,9 +15,9 @@ Solo Music Player is a Windows-first desktop application that uses Echo Music as
 
 Keyboard shortcuts: **Space** toggles playback, **Ctrl+←/→** changes tracks, **Ctrl+K** focuses search, **Ctrl+L** toggles lyrics, and **Ctrl+O** opens the audio-file picker. Shortcuts yield to text entry; **Tab** remains normal focus navigation.
 
-## Echo Music reference coverage
+## Platform scope
 
-The Android reference includes a much larger streaming product: lossless/320 kbps extensions, offline downloads, Echo Find recognition, provider lyrics and translation, Spotify import, Listen Together, Canvas, Cast, Discord presence, equalizer/audio routing, and Android widgets/quick settings. Those Android-specific integrations remain outside this desktop build.
+The desktop build focuses on local library management and playback, along with catalog search and streaming features available in the Windows app. Mobile-only integrations and platform-specific services are outside this desktop build.
 
 ## Build and run
 
