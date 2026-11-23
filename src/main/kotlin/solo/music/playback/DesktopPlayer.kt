@@ -256,7 +256,14 @@ class DesktopPlayer {
           flow.update { it.copy(positionMs = value.toMillis().toLong().coerceAtLeast(0)) }
         }
       }
-      player.setOnError { if (mediaPlayer === player) flow.update { it.copy(isPlaying = false, error = friendlyMediaError(media.error?.message) ?: "Could not play this file") } }
+      player.setOnError {
+        if (mediaPlayer === player) {
+          val mediaError = player.error ?: media.error
+          val detail = mediaError?.message?.takeIf { it.isNotBlank() }
+            ?: mediaError?.type?.name
+          flow.update { it.copy(isPlaying = false, error = friendlyMediaError(detail) ?: "Could not play this file") }
+        }
+      }
       media.setOnError { flow.update { it.copy(error = friendlyMediaError(media.error?.message) ?: "Unsupported audio format") } }
     } catch (error: Exception) {
       flow.update { it.copy(isPlaying = false, error = friendlyMediaError(error.message) ?: "Could not open audio") }
