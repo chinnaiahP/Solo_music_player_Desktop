@@ -28,7 +28,9 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 javafx {
-  version = "21.0.6"
+  // 23.0.2 ships Linux libavplugins for libavcodec 57-61, so media playback works on
+  // Ubuntu 24.04+ / Fedora / Debian where JavaFX 21 could not create a player at all.
+  version = "23.0.2"
   modules("javafx.controls", "javafx.media")
 }
 

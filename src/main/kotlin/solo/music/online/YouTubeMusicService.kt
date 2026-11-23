@@ -376,14 +376,25 @@ class YouTubeMusicService(private val onlineCacheDirectory: File = defaultOnline
     val title = columns.firstOrNull()?.let(::renderedText)?.takeIf(String::isNotBlank)
       ?: renderer["title"]?.let(::renderedText)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
     val subtitle = columns.drop(1).firstOrNull()?.let(::renderedText).orEmpty()
+    // Subtitles look like "Song • Artist • Album • 4:45" — drop the leading item-type
+    // label and any trailing duration segment before mapping artist/album.
     val segments = subtitle.split(" • ", " · ").map(String::trim).filter(String::isNotBlank)
+    val meta = segments.dropWhile { it.lowercase() in itemTypeLabels }
+      .filter { !it.matches(Regex("\\d{1,2}:\\d{2}")) && !it.matches(engagementRegex) }
     val image = renderer.findValue("thumbnails")?.jsonArrayOrNull()?.mapNotNull { it.jsonObjectOrNull()?.get("url")?.jsonPrimitive?.contentOrNull }?.lastOrNull()
     val duration = renderer.objects().flatMap { it.values.asSequence() }.mapNotNull { it.jsonPrimitiveOrNull()?.contentOrNull }
       .firstOrNull { it.matches(Regex("\\d{1,2}:\\d{2}")) }?.let(::parseDuration) ?: 0L
     Track(id = "yt:$videoId", path = "https://www.youtube.com/watch?v=$videoId", title = title,
-      artist = segments.firstOrNull() ?: "YouTube Music", album = segments.drop(1).firstOrNull() ?: "",
+      artist = meta.firstOrNull() ?: "YouTube Music", album = meta.drop(1).firstOrNull() ?: "",
       durationMs = duration, videoId = videoId, remoteArtworkUrl = image)
   }.distinctBy { it.id }.toList()
+
+  private val engagementRegex = Regex("(?i)\\d[\\d.,]*\\s*[kmb]?\\s*(views?|plays?|likes?|subscribers|followers)")
+
+  private val itemTypeLabels = setOf(
+    "song", "video", "album", "single", "ep", "artist", "playlist", "profile",
+    "podcast", "episode", "mix", "station", "audio", "music"
+  )
 
   private fun renderedText(element: JsonElement): String = when (element) {
     is JsonPrimitive -> element.contentOrNull.orEmpty()

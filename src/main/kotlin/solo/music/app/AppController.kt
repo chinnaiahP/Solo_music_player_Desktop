@@ -43,7 +43,8 @@ class AppController {
   val player = DesktopPlayer()
   private val mediaSession = WindowsSmtcBridge(
     onAction = { action ->
-      mutableNotice.value = "Headset control received: ${action.lowercase().replaceFirstChar(Char::uppercase)}"
+      // Disabled for now — re-enable when debugging headset/media-button input.
+      // mutableNotice.value = "Headset control received: ${action.lowercase().replaceFirstChar(Char::uppercase)}"
       when (action) {
         "PLAY" -> player.resume()
         "PAUSE" -> player.pause()

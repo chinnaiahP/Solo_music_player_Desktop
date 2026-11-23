@@ -34,11 +34,14 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -86,11 +89,17 @@ private val CardElevated = Color(0xFF382A3F)
 private val BorderSubtle = Color(0xFF47374F)
 private val TextPrimary = Color(0xFFF6EFF7)
 private val TextMuted = Color(0xFFB5A6BA)
-private val AccentLavender = Color(0xFFD2A4FF)
 private val AccentRose = Color(0xFFF4C7D0)
-private val HeroTopPlum = Color(0xFF533B53)
-private val HeroMidMauve = Color(0xFF39293D)
+private val HeroTopRose = Color(0xFF4C3338)
+private val HeroMidRose = Color(0xFF37262C)
 private val HeroBottomDeep = Color(0xFF211926)
+
+private val appIconBitmap: ImageBitmap by lazy {
+  SkiaImage.makeFromEncoded(
+    AppController::class.java.getResourceAsStream("/solo_music_icon.png")?.readBytes()
+      ?: error("Missing solo_music_icon.png resource")
+  ).toComposeImageBitmap()
+}
 
 private object ShortcutFocusGuard {
   private val focusedEditors = mutableSetOf<Any>()
@@ -243,7 +252,7 @@ fun main() = application {
       colorScheme = darkColorScheme(
         background = BgCanvas,
         surface = PanelSurface,
-        primary = AccentLavender,
+        primary = AccentRose,
         secondary = AccentRose,
         onBackground = TextPrimary,
         onSurface = TextPrimary
@@ -264,7 +273,7 @@ fun main() = application {
           val isMedium = maxWidth >= 880.dp
           val showRightRail = isWide && page != Page.Lyrics
 
-          Column(Modifier.fillMaxSize().padding(12.dp)) {
+          Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 20.dp)) {
             Row(Modifier.weight(1f).fillMaxWidth()) {
               // 1. Left Navigation Sidebar (Full on medium/wide, compact icon rail on narrow windows)
               if (isMedium) {
@@ -347,6 +356,7 @@ fun main() = application {
                       shuffleEnabled = playback.shuffle,
                       repeatMode = playback.repeatMode,
                       playbackPosition = position,
+                      playbackDuration = playback.durationMs,
                       onSeek = app.player::seekTo,
                       onOpenLyrics = { navigateTo(if (page == Page.Lyrics) Page.Home else Page.Lyrics) },
                       onOpenQueue = { queueOpen = true },
@@ -412,6 +422,15 @@ fun main() = application {
 
             Spacer(Modifier.height(10.dp))
 
+            if (playback.error != null || notice != null) {
+              Text(
+                text = playback.error ?: notice.orEmpty(),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp, start = 6.dp),
+                color = if (playback.error != null) Color(0xFFFF8585) else AccentRose,
+                fontSize = 12.sp
+              )
+            }
+
             // 4. Persistent Bottom Transport Bar with Expressive Scalloped Button
             PlayerBar(
               track = playback.current,
@@ -427,10 +446,8 @@ fun main() = application {
               onPrevious = app.player::previous,
               onNext = app.player::next,
               onSeek = app.player::seekTo,
-              onVolume = { value ->
-                app.player.setVolume(value)
-                app.savePreferences { it.copy(volume = value) }
-              },
+              onVolume = { value -> app.player.setVolume(value) },
+              onVolumeFinished = { value -> app.savePreferences { it.copy(volume = value) } },
               onShuffle = {
                 app.player.toggleShuffle()
                 app.savePreferences { it.copy(shuffle = !it.shuffle) }
@@ -444,15 +461,6 @@ fun main() = application {
               onFavorite = { playback.current?.let(app::toggleFavorite) },
               onOpenNowPlaying = { navigateTo(Page.Home) }
             )
-
-            if (playback.error != null || notice != null) {
-              Text(
-                text = playback.error ?: notice.orEmpty(),
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 6.dp),
-                color = if (playback.error != null) Color(0xFFFF8585) else AccentRose,
-                fontSize = 12.sp
-              )
-            }
           }
         }
 
@@ -593,12 +601,12 @@ private fun CompactSidebar(page: Page, onSelect: (Page) -> Unit, onFiles: () -> 
       .padding(vertical = 14.dp),
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
-    Box(
-      Modifier.size(38.dp).background(AccentRose, CircleShape),
-      contentAlignment = Alignment.Center
-    ) {
-      Label("♫", color = Color(0xFF4A252E), size = 18, weight = FontWeight.Black)
-    }
+    Image(
+      bitmap = appIconBitmap,
+      contentDescription = "Solo Music",
+      modifier = Modifier.size(38.dp).clip(RoundedCornerShape(9.dp)),
+      filterQuality = FilterQuality.High
+    )
     Spacer(Modifier.height(18.dp))
     listOf(Page.Home, Page.Search, Page.Library, Page.Playlists, Page.Lyrics, Page.History).forEach { item ->
       val active = page == item
@@ -617,7 +625,7 @@ private fun CompactSidebar(page: Page, onSelect: (Page) -> Unit, onFiles: () -> 
     Spacer(Modifier.weight(1f))
     SidebarUtilityIcon("＋", false, onFiles)
     Spacer(Modifier.height(8.dp))
-    SidebarUtilityIcon("⚙", page == Page.Settings) { onSelect(Page.Settings) }
+    SettingsUtilityIcon(page == Page.Settings) { onSelect(Page.Settings) }
   }
 }
 
@@ -645,12 +653,12 @@ private fun Sidebar(
       .padding(14.dp)
   ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
-      Box(
-        Modifier.size(36.dp).background(AccentRose, CircleShape),
-        contentAlignment = Alignment.Center
-      ) {
-        Label("♫", color = Color(0xFF4A252E), size = 18, weight = FontWeight.Black)
-      }
+      Image(
+        bitmap = appIconBitmap,
+        contentDescription = "Solo Music",
+        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)),
+        filterQuality = FilterQuality.High
+      )
       Spacer(Modifier.width(10.dp))
       Column {
         Label("Solo Music", size = 16, weight = FontWeight.Bold)
@@ -713,7 +721,7 @@ private fun Sidebar(
     Spacer(Modifier.height(10.dp))
     Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
       Label("CREATED PLAYLISTS", Modifier.weight(1f), TextMuted, 10, FontWeight.Bold)
-      Text("All", Modifier.clickable { onSelect(Page.Playlists) }, color = AccentLavender, fontSize = 10.sp)
+      Text("All", Modifier.clickable { onSelect(Page.Playlists) }, color = AccentRose, fontSize = 10.sp)
     }
     Spacer(Modifier.height(6.dp))
 
@@ -757,7 +765,7 @@ private fun Sidebar(
       SidebarUtilityIcon("▤", page == Page.Library) { onSelect(Page.Library) }
       SidebarUtilityIcon("◷", page == Page.History) { onSelect(Page.History) }
       SidebarUtilityIcon("▣", page == Page.Playlists) { onSelect(Page.Playlists) }
-      SidebarUtilityIcon("⚙", page == Page.Settings) { onSelect(Page.Settings) }
+      SettingsUtilityIcon(page == Page.Settings) { onSelect(Page.Settings) }
     }
   }
 }
@@ -773,6 +781,54 @@ private fun SidebarUtilityIcon(glyph: String, active: Boolean, onClick: () -> Un
     contentAlignment = Alignment.Center
   ) {
     Label(glyph, color = if (active) AccentRose else TextMuted, size = 15)
+  }
+}
+
+@Composable
+private fun SettingsUtilityIcon(active: Boolean, onClick: () -> Unit) {
+  Box(
+    Modifier
+      .size(36.dp)
+      .clip(CircleShape)
+      .background(if (active) CardElevated else CardGlass.copy(alpha = 0.65f))
+      .clickable(onClick = onClick),
+    contentAlignment = Alignment.Center
+  ) {
+    GearIcon(tint = if (active) AccentRose else TextMuted, iconSize = 17.dp)
+  }
+}
+
+/** Vector-drawn pair of intermeshing gears matching the hand-drawn transport icon style. */
+@Composable
+private fun GearIcon(tint: Color, iconSize: Dp = 18.dp) {
+  Canvas(Modifier.size(iconSize)) {
+    val w = size.minDimension
+    fun gear(cx: Float, cy: Float, rOut: Float, teeth: Int, phaseDeg: Float): Path {
+      val step = Math.PI * 2 / teeth
+      val phase = Math.toRadians(phaseDeg.toDouble())
+      val rRoot = rOut * 0.74f
+      val toothHalf = step * 0.17
+      val rootHalf = step * 0.33
+      fun pt(r: Float, a: Double, off: Double) = Offset(
+        cx + r * kotlin.math.cos(a + off).toFloat(),
+        cy + r * kotlin.math.sin(a + off).toFloat()
+      )
+      val path = Path()
+      path.fillType = PathFillType.EvenOdd
+      for (i in 0 until teeth) {
+        val a = phase + i * step
+        val lead = pt(rRoot, a, -rootHalf)
+        if (i == 0) path.moveTo(lead.x, lead.y) else path.lineTo(lead.x, lead.y)
+        pt(rOut, a, -toothHalf).let { path.lineTo(it.x, it.y) }
+        pt(rOut, a, toothHalf).let { path.lineTo(it.x, it.y) }
+        pt(rRoot, a, rootHalf).let { path.lineTo(it.x, it.y) }
+      }
+      path.close()
+      path.addOval(Rect(Offset(cx, cy), rOut * 0.34f))
+      return path
+    }
+    drawPath(gear(w * 0.40f, w * 0.62f, w * 0.34f, 9, 0f), tint)
+    drawPath(gear(w * 0.74f, w * 0.30f, w * 0.22f, 8, 20f), tint)
   }
 }
 
@@ -841,22 +897,34 @@ private fun TopHeaderBar(
     Spacer(Modifier.weight(1f))
     Spacer(Modifier.width(8.dp))
 
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-      CircleIconButton("◷", onClick = onHistory)
-      CircleIconButton("↗", onClick = onTrending)
-      TuneIconButton(onClick = onPersonalize)
-      Box(
-        Modifier
-          .size(36.dp)
-          .clip(CircleShape)
-          .background(CardGlass)
-          .border(1.5.dp, AccentRose.copy(alpha = 0.75f), CircleShape)
-          .clickable(onClick = onSettings),
-        contentAlignment = Alignment.Center
-      ) {
-        Label("⚙", color = AccentRose, size = 15)
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+      HeaderIconButton(onClick = onHistory, description = "Listening history") {
+        Label("◷", color = TextMuted, size = 16)
+      }
+      HeaderIconButton(onClick = onTrending, description = "Trending") {
+        Label("↗", color = TextMuted, size = 15)
+      }
+      HeaderIconButton(onClick = onPersonalize, description = "Music preferences") {
+        TuneIcon(Modifier.size(17.dp), tint = TextMuted)
+      }
+      HeaderIconButton(onClick = onSettings, description = "Settings") {
+        GearIcon(tint = TextMuted, iconSize = 19.dp)
       }
     }
+  }
+}
+
+@Composable
+private fun HeaderIconButton(onClick: () -> Unit, description: String = "", icon: @Composable () -> Unit) {
+  Box(
+    Modifier
+      .size(36.dp)
+      .clip(RoundedCornerShape(10.dp))
+      .clickable(onClick = onClick)
+      .semantics { contentDescription = description },
+    contentAlignment = Alignment.Center
+  ) {
+    icon()
   }
 }
 
@@ -876,18 +944,7 @@ private fun CircleIconButton(glyph: String, enabled: Boolean = true, onClick: ()
 }
 
 @Composable
-private fun TuneIconButton(onClick: () -> Unit) {
-  Box(
-    Modifier.size(36.dp).clip(CircleShape).background(CardGlass)
-      .border(1.dp, BorderSubtle.copy(alpha = 0.55f), CircleShape).clickable(onClick = onClick),
-    contentAlignment = Alignment.Center
-  ) {
-    TuneIcon(Modifier.size(17.dp))
-  }
-}
-
-@Composable
-private fun TuneIcon(modifier: Modifier = Modifier, tint: Color = AccentLavender) {
+private fun TuneIcon(modifier: Modifier = Modifier, tint: Color = AccentRose) {
   Canvas(modifier) {
     val left = size.width * .12f
     val right = size.width * .88f
@@ -927,6 +984,7 @@ private fun MainPanel(
   shuffleEnabled: Boolean,
   repeatMode: Int,
   playbackPosition: Long,
+  playbackDuration: Long,
   onSeek: (Long) -> Unit,
   onOpenLyrics: () -> Unit,
   onOpenQueue: () -> Unit,
@@ -987,6 +1045,7 @@ private fun MainPanel(
       isCurrent = currentTrack != null && currentTrack.id == focusTrack?.id,
       isPlaying = isPlaying,
       position = playbackPosition,
+      duration = playbackDuration,
       lyrics = when (lyricsMode) {
         "ENGLISH" -> englishLyrics
         "OFF" -> emptyList()
@@ -1132,36 +1191,35 @@ private fun MainPanel(
       }
     } else if (page == Page.Settings) {
       Spacer(Modifier.height(16.dp))
-      LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-          SettingBlock("PLAYBACK ENGINE", "Local & Online Streaming", "Plays local audio files and YouTube Music tracks.")
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton("＋ Import audio", onAddFiles)
-            ActionButton("▧ Scan music folder", onAddFolder)
+          SettingsSection("PLAYBACK ENGINE", "Local & Online Streaming", "Plays local audio files and YouTube Music tracks.") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              ActionButton("＋ Import audio", onAddFiles)
+              ActionButton("▧ Scan music folder", onAddFolder)
+            }
           }
         }
         item {
-          SettingBlock("LIBRARY", "Collection Status", if (tracks.isEmpty()) "No local tracks imported yet." else "${tracks.size} tracks indexed across ${playlists.size} playlists.")
+          SettingsSection("LIBRARY", "Collection Status", if (tracks.isEmpty()) "No local tracks imported yet." else "${tracks.size} tracks indexed across ${playlists.size} playlists.")
         }
         item {
-          SettingBlock("PERSONALIZATION", "Country, languages & composers", "Choose the regions and artists used to personalize current music recommendations.")
-          ActionButton("⚙  Update music preferences", onPersonalize)
+          SettingsSection("PERSONALIZATION", "Country, languages & composers", "Choose the regions and artists used to personalize current music recommendations.") {
+            ActionButton("⚙  Update music preferences", onPersonalize)
+          }
         }
         item {
-          SettingBlock("LYRICS", "Local .lrc + SimpMusic + Unison + BetterLyrics + LRCLIB + KuGou + YouTube + lyrics.ovh", "Solo checks for a matching .lrc sidecar first, then falls back through the online sources — synced lyrics are preferred over plain text.")
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("NATIVE" to "Native", "ENGLISH" to "English", "OFF" to "Off").forEach { (mode, label) ->
-              ActionButton(if (lyricsMode == mode) "✓ $label" else label) { onLyricsModeChange(mode) }
+          SettingsSection("LYRICS", "Local .lrc + SimpMusic + Unison + BetterLyrics + LRCLIB + KuGou + YouTube + lyrics.ovh", "Solo checks for a matching .lrc sidecar first, then falls back through the online sources — synced lyrics are preferred over plain text.") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              listOf("NATIVE" to "Native", "ENGLISH" to "English", "OFF" to "Off").forEach { (mode, label) ->
+                ActionButton(if (lyricsMode == mode) "✓ $label" else label) { onLyricsModeChange(mode) }
+              }
             }
           }
         }
         item {
           var deepLKeyDraft by remember(deeplApiKey) { mutableStateOf(deeplApiKey) }
-          Column(Modifier.fillMaxWidth().background(CardGlass, RoundedCornerShape(12.dp)).padding(14.dp)) {
-            Label("ENGLISH LYRICS", color = AccentRose, size = 10, weight = FontWeight.Bold)
-            Spacer(Modifier.height(5.dp))
-            Label("English mode translates each native lyric line through DeepL and keeps its playback timestamp. Add a DeepL API key to use this option.", color = TextMuted, size = 11)
-            Spacer(Modifier.height(8.dp))
+          SettingsSection("ENGLISH LYRICS", "DeepL translation", "English mode translates each native lyric line through DeepL and keeps its playback timestamp. Add a DeepL API key to use this option.") {
             OutlinedTextField(
               value = deepLKeyDraft,
               onValueChange = { deepLKeyDraft = it },
@@ -1171,28 +1229,29 @@ private fun MainPanel(
               singleLine = true,
               visualTransformation = PasswordVisualTransformation()
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             ActionButton("Save DeepL key", { onDeepLApiKeyChange(deepLKeyDraft) })
           }
         }
         item {
-          SettingBlock("PLAYBACK CONTROLS", "Control the current song", "These buttons operate the same playback queue as the persistent player bar and headset media keys.")
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton("Previous", onPrevious)
-            ActionButton(if (isPlaying) "Pause" else "Play / Resume", onTogglePlayback)
-            ActionButton("Next", onNext)
-            ActionButton("${if (shuffleEnabled) "✓ " else ""}Shuffle", onToggleShuffle)
-            ActionButton(
-              when (repeatMode) {
-                DesktopPlayer.REPEAT_ONE -> "Repeat: One"
-                DesktopPlayer.REPEAT_ALL -> "Repeat: All"
-                else -> "Repeat: Sequential"
-              },
-              onCycleRepeat
-            )
+          SettingsSection("PLAYBACK CONTROLS", "Control the current song", "These buttons operate the same playback queue as the persistent player bar and headset media keys.") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              ActionButton("Previous", onPrevious)
+              ActionButton(if (isPlaying) "Pause" else "Play / Resume", onTogglePlayback)
+              ActionButton("Next", onNext)
+              ActionButton("${if (shuffleEnabled) "✓ " else ""}Shuffle", onToggleShuffle)
+              ActionButton(
+                when (repeatMode) {
+                  DesktopPlayer.REPEAT_ONE -> "Repeat: One"
+                  DesktopPlayer.REPEAT_ALL -> "Repeat: All"
+                  else -> "Repeat: Sequential"
+                },
+                onCycleRepeat
+              )
+            }
           }
         }
-        item { SettingBlock("KEYBOARD SHORTCUTS", "Desktop Controls", "Space: Play/Pause  ·  Ctrl + ←/→: Prev/Next  ·  Ctrl + K: Search  ·  Ctrl + L: Toggle Lyrics  ·  Ctrl + O: Import  ·  Tab: move focus") }
+        item { SettingsSection("KEYBOARD SHORTCUTS", "Desktop Controls", "Space: Play/Pause  ·  Ctrl + ←/→: Prev/Next  ·  Ctrl + K: Search  ·  Ctrl + L: Toggle Lyrics  ·  Ctrl + O: Import  ·  Tab: move focus") }
       }
     } else if (list.isEmpty()) {
       Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -1246,6 +1305,7 @@ private fun NowPlayingHeroPanel(
   isCurrent: Boolean,
   isPlaying: Boolean,
   position: Long,
+  duration: Long,
   lyrics: List<LyricLine>,
   lyricsLoading: Boolean,
   lyricsProvider: String?,
@@ -1261,16 +1321,31 @@ private fun NowPlayingHeroPanel(
   onFavorite: (Track) -> Unit,
   onAddFiles: () -> Unit
 ) {
-  val hasTimestamps = remember(lyrics) { lyrics.any { it.timeMs >= 0 } }
-  val activeIdx = remember(lyrics, position, hasTimestamps) {
-    if (hasTimestamps) LrcLyrics.activeIndex(lyrics, position) else -1
+  // Plain-text providers carry no timestamps, so spread lines across the real
+  // playback duration to still get a moving highlight, offset nudge, and click-to-seek.
+  val displayLyrics = remember(lyrics, duration) {
+    if (lyrics.any { it.timeMs >= 0L } || lyrics.size < 3 || duration <= 0L) lyrics else {
+      val intro = (duration * 0.08).toLong()
+      val step = ((duration * 0.84).toLong() / lyrics.size).coerceAtLeast(1L)
+      lyrics.mapIndexed { index, line -> line.copy(timeMs = intro + index * step) }
+    }
+  }
+  val estimatedSync = displayLyrics !== lyrics
+  val displayProvider = if (estimatedSync && !lyricsProvider.isNullOrBlank() && !lyricsProvider.contains("estimated", ignoreCase = true)) {
+    "$lyricsProvider (estimated)"
+  } else lyricsProvider
+  val hasTimestamps = remember(displayLyrics) { displayLyrics.any { it.timeMs >= 0 } }
+  var lyricsOffsetMs by remember(track?.id) { mutableLongStateOf(0L) }
+  val lyricPosition = (position - lyricsOffsetMs).coerceAtLeast(0L)
+  val activeIdx = remember(displayLyrics, lyricPosition, hasTimestamps) {
+    if (hasTimestamps) LrcLyrics.activeIndex(displayLyrics, lyricPosition) else -1
   }
   val lyricsListState = rememberLazyListState()
 
   // Smoothly keep the currently playing line centered in the lyrics viewport
-  LaunchedEffect(activeIdx, lyrics.size, lyricsMode) {
-    if (activeIdx >= 0 && lyrics.isNotEmpty() && lyricsMode != "OFF") {
-      val target = (activeIdx - 2).coerceIn(0, (lyrics.size - 1).coerceAtLeast(0))
+  LaunchedEffect(activeIdx, displayLyrics.size, lyricsMode) {
+    if (activeIdx >= 0 && displayLyrics.isNotEmpty() && lyricsMode != "OFF") {
+      val target = (activeIdx - 2).coerceIn(0, (displayLyrics.size - 1).coerceAtLeast(0))
       runCatching { lyricsListState.animateScrollToItem(target) }
     }
   }
@@ -1279,7 +1354,7 @@ private fun NowPlayingHeroPanel(
     Modifier
       .fillMaxSize()
       .background(
-        Brush.verticalGradient(listOf(HeroTopPlum, HeroMidMauve, HeroBottomDeep)),
+        Brush.verticalGradient(listOf(HeroTopRose, HeroMidRose, HeroBottomDeep)),
         RoundedCornerShape(16.dp)
       )
       .border(1.dp, BorderSubtle.copy(alpha = 0.55f), RoundedCornerShape(16.dp))
@@ -1373,6 +1448,7 @@ private fun NowPlayingHeroPanel(
           ) {
             TrackArtwork(
               track = track,
+              hiRes = true,
               modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
@@ -1434,16 +1510,18 @@ private fun NowPlayingHeroPanel(
 
           LyricsViewportCard(
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            lyrics = lyrics,
+            lyrics = displayLyrics,
             activeIdx = activeIdx,
             hasTimestamps = hasTimestamps,
             lyricsLoading = lyricsLoading,
             translationLoading = translationLoading,
             translationError = translationError,
             lyricsMode = lyricsMode,
-            lyricsProvider = lyricsProvider,
+            lyricsProvider = displayProvider,
             fullLyricsMode = fullLyricsMode,
             listState = lyricsListState,
+            lyricsOffsetMs = lyricsOffsetMs,
+            onLyricsOffset = { delta -> lyricsOffsetMs = (lyricsOffsetMs + delta).coerceIn(-30000L, 30000L) },
             onSeek = onSeek
           )
         }
@@ -1469,6 +1547,7 @@ private fun NowPlayingHeroPanel(
             ) {
               TrackArtwork(
                 track = track,
+                hiRes = true,
                 modifier = Modifier
                   .widthIn(max = if (fullLyricsMode) 310.dp else 370.dp)
                   .fillMaxWidth()
@@ -1513,7 +1592,7 @@ private fun NowPlayingHeroPanel(
                   .padding(horizontal = 11.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
               ) {
-                Label("UP NEXT", color = AccentLavender, size = 8, weight = FontWeight.Bold)
+                Label("UP NEXT", color = AccentRose, size = 8, weight = FontWeight.Bold)
                 Spacer(Modifier.width(8.dp))
                 Label(
                   text = "${nextUpTrack.title} · ${nextUpTrack.artist}",
@@ -1532,16 +1611,18 @@ private fun NowPlayingHeroPanel(
             modifier = Modifier
               .weight(if (fullLyricsMode) 1.22f else 1.04f)
               .fillMaxHeight(),
-            lyrics = lyrics,
+            lyrics = displayLyrics,
             activeIdx = activeIdx,
             hasTimestamps = hasTimestamps,
             lyricsLoading = lyricsLoading,
             translationLoading = translationLoading,
             translationError = translationError,
             lyricsMode = lyricsMode,
-            lyricsProvider = lyricsProvider,
+            lyricsProvider = displayProvider,
             fullLyricsMode = fullLyricsMode,
             listState = lyricsListState,
+            lyricsOffsetMs = lyricsOffsetMs,
+            onLyricsOffset = { delta -> lyricsOffsetMs = (lyricsOffsetMs + delta).coerceIn(-30000L, 30000L) },
             onSeek = onSeek
           )
         }
@@ -1570,6 +1651,21 @@ private fun FavoritePillButton(isFavorite: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+private fun LyricsOffsetChip(glyph: String, onClick: () -> Unit) {
+  Box(
+    Modifier
+      .clip(CircleShape)
+      .background(Color.White.copy(alpha = 0.08f))
+      .border(1.dp, BorderSubtle.copy(alpha = 0.5f), CircleShape)
+      .clickable(onClick = onClick)
+      .padding(horizontal = 8.dp, vertical = 2.dp),
+    contentAlignment = Alignment.Center
+  ) {
+    Label(glyph, color = TextPrimary.copy(alpha = 0.9f), size = 11, weight = FontWeight.Bold)
+  }
+}
+
+@Composable
 private fun LyricsViewportCard(
   modifier: Modifier,
   lyrics: List<LyricLine>,
@@ -1582,6 +1678,8 @@ private fun LyricsViewportCard(
   lyricsProvider: String?,
   fullLyricsMode: Boolean,
   listState: androidx.compose.foundation.lazy.LazyListState,
+  lyricsOffsetMs: Long,
+  onLyricsOffset: (Long) -> Unit,
   onSeek: (Long) -> Unit
 ) {
   Column(
@@ -1599,6 +1697,18 @@ private fun LyricsViewportCard(
         weight = FontWeight.Bold
       )
       Spacer(Modifier.weight(1f))
+      if (hasTimestamps && lyrics.isNotEmpty()) {
+        LyricsOffsetChip("−") { onLyricsOffset(-500L) }
+        Label(
+          text = if (lyricsOffsetMs == 0L) "±0.0s" else "%+.1fs".format(lyricsOffsetMs / 1000f),
+          modifier = Modifier.padding(horizontal = 5.dp),
+          color = if (lyricsOffsetMs == 0L) TextMuted.copy(alpha = 0.7f) else AccentRose,
+          size = 9,
+          weight = FontWeight.Bold
+        )
+        LyricsOffsetChip("+") { onLyricsOffset(500L) }
+        Spacer(Modifier.width(8.dp))
+      }
       val badgeText = when {
         lyricsLoading -> "LOADING…"
         translationLoading -> "TRANSLATING…"
@@ -1683,7 +1793,7 @@ private fun LyricsViewportCard(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(rowBg)
-                .then(if (line.timeMs >= 0) Modifier.clickable { onSeek(line.timeMs) } else Modifier)
+                .then(if (line.timeMs >= 0) Modifier.clickable { onSeek((line.timeMs + lyricsOffsetMs).coerceAtLeast(0L)) } else Modifier)
                 .padding(horizontal = 12.dp, vertical = if (isSelected) 9.dp else 5.dp),
               verticalAlignment = Alignment.CenterVertically
             ) {
@@ -2006,6 +2116,7 @@ private fun OnlineFeedPanel(
   }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerBar(
   track: Track?,
@@ -2022,6 +2133,7 @@ private fun PlayerBar(
   onNext: () -> Unit,
   onSeek: (Long) -> Unit,
   onVolume: (Float) -> Unit,
+  onVolumeFinished: (Float) -> Unit,
   onShuffle: () -> Unit,
   onRepeat: () -> Unit,
   onQueue: () -> Unit,
@@ -2085,6 +2197,8 @@ private fun PlayerBar(
         )
       }
 
+      Spacer(Modifier.height(6.dp))
+
       Row(Modifier.fillMaxWidth().height(20.dp), verticalAlignment = Alignment.CenterVertically) {
         Label(time(position), color = TextMuted, size = 10)
         Spacer(Modifier.width(8.dp))
@@ -2095,11 +2209,21 @@ private fun PlayerBar(
             if (scrubbing) onSeek((scrubFraction * duration).toLong())
             scrubbing = false
           },
-          modifier = Modifier.weight(1f),
+          modifier = Modifier.weight(1f).height(14.dp),
           enabled = duration > 0,
+          track = { sliderState ->
+            SliderDefaults.Track(
+              sliderState = sliderState,
+              modifier = Modifier.height(3.dp),
+              colors = SliderDefaults.colors(
+                activeTrackColor = AccentRose,
+                inactiveTrackColor = BorderSubtle
+              )
+            )
+          },
           colors = SliderDefaults.colors(
-            thumbColor = TextPrimary,
-            activeTrackColor = TextPrimary,
+            thumbColor = AccentRose,
+            activeTrackColor = AccentRose,
             inactiveTrackColor = BorderSubtle
           )
         )
@@ -2135,23 +2259,43 @@ private fun PlayerBar(
       }
       if (!compact) {
         Spacer(Modifier.width(6.dp))
-        TransportIcon(TransportIconKind.Volume, tint = TextMuted, iconSize = 14.dp)
-        Slider(
-          value = volume,
-          onValueChange = onVolume,
-          modifier = Modifier.width(92.dp),
-          colors = SliderDefaults.colors(
-            thumbColor = TextPrimary,
-            activeTrackColor = AccentRose,
-            inactiveTrackColor = BorderSubtle
+        // Local drag state keeps the thumb glued to the pointer while the real
+        // volume state round-trips through the JavaFX player thread.
+        var volumeDrag by remember { mutableStateOf<Float?>(null) }
+        Row(
+          Modifier
+            .clip(CircleShape)
+            .background(CardGlass)
+            .border(1.dp, BorderSubtle.copy(alpha = 0.5f), CircleShape)
+            .padding(horizontal = 10.dp, vertical = 2.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          TransportIcon(
+            if ((volumeDrag ?: volume) <= 0f) TransportIconKind.VolumeMute else TransportIconKind.Volume,
+            tint = TextMuted,
+            iconSize = 13.dp
           )
-        )
+          Slider(
+            value = volumeDrag ?: volume,
+            onValueChange = { volumeDrag = it; onVolume(it) },
+            onValueChangeFinished = {
+              volumeDrag?.let(onVolumeFinished)
+              volumeDrag = null
+            },
+            modifier = Modifier.width(96.dp),
+            colors = SliderDefaults.colors(
+              thumbColor = TextPrimary,
+              activeTrackColor = AccentRose,
+              inactiveTrackColor = BorderSubtle.copy(alpha = 0.55f)
+            )
+          )
+        }
       }
     }
   }
 }
 
-private enum class TransportIconKind { Shuffle, Previous, Play, Pause, Next, Repeat, RepeatOne, Volume, Queue }
+private enum class TransportIconKind { Shuffle, Previous, Play, Pause, Next, Repeat, RepeatOne, Volume, VolumeMute, Queue }
 
 /** Vector-drawn transport icons so the player bar follows the theme instead of system emoji fonts. */
 @Composable
@@ -2211,6 +2355,14 @@ private fun TransportIcon(kind: TransportIconKind, tint: Color, iconSize: Dp = 1
         drawArc(tint, -55f, 110f, false, Offset(0.5f * w, 0.32f * h), Size(0.34f * w, 0.36f * h), style = stroke)
         drawArc(tint, -55f, 110f, false, Offset(0.5f * w, 0.2f * h), Size(0.52f * w, 0.6f * h), style = stroke)
       }
+      TransportIconKind.VolumeMute -> {
+        drawPath(Path().apply {
+          moveTo(0.08f * w, 0.36f * h); lineTo(0.3f * w, 0.36f * h); lineTo(0.54f * w, 0.16f * h)
+          lineTo(0.54f * w, 0.84f * h); lineTo(0.3f * w, 0.64f * h); lineTo(0.08f * w, 0.64f * h); close()
+        }, tint)
+        line(0.62f, 0.36f, 0.9f, 0.64f)
+        line(0.62f, 0.64f, 0.9f, 0.36f)
+      }
       TransportIconKind.Queue -> {
         line(0.16f, 0.28f, 0.84f, 0.28f)
         line(0.16f, 0.5f, 0.84f, 0.5f)
@@ -2231,17 +2383,17 @@ private fun TransportButton(
     modifier = Modifier
       .size(34.dp)
       .clip(CircleShape)
-      .background(if (selected) AccentLavender.copy(alpha = 0.2f) else Color.Transparent)
+      .background(if (selected) AccentRose.copy(alpha = 0.2f) else Color.Transparent)
       .clickable(onClick = onClick)
       .semantics { contentDescription = description },
     contentAlignment = Alignment.Center
   ) {
-    TransportIcon(icon, tint = if (selected) AccentLavender else TextMuted)
+    TransportIcon(icon, tint = if (selected) AccentRose else TextMuted)
     if (icon == TransportIconKind.RepeatOne) {
       Text(
         text = "1",
         modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 4.dp),
-        color = AccentLavender,
+        color = AccentRose,
         fontSize = 7.sp,
         fontWeight = FontWeight.Bold
       )
@@ -2255,7 +2407,7 @@ private fun TransportPlayButton(playing: Boolean, enabled: Boolean, onClick: () 
     modifier = Modifier
       .size(46.dp)
       .clip(CircleShape)
-      .background(if (enabled) AccentLavender else CardGlass)
+      .background(if (enabled) AccentRose else CardGlass)
       .clickable(enabled = enabled, onClick = onClick),
     contentAlignment = Alignment.Center
   ) {
@@ -2300,7 +2452,7 @@ private fun OnlineSearchResults(
     } else {
       LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (localTracks.isNotEmpty()) {
-          item { Label("IN YOUR LOCAL LIBRARY", color = AccentLavender, size = 10, weight = FontWeight.Bold, modifier = Modifier.padding(vertical = 6.dp)) }
+          item { Label("IN YOUR LOCAL LIBRARY", color = AccentRose, size = 10, weight = FontWeight.Bold, modifier = Modifier.padding(vertical = 6.dp)) }
           items(localTracks.take(6), key = { "local-${it.id}" }) { track ->
             OnlineResultRow(track, playlists, badge = "LOCAL", onPlay = { onPlayLocal(track) }, onAdd = { id -> onAdd(id, track) })
           }
@@ -2338,7 +2490,7 @@ private fun OnlineResultRow(track: Track, playlists: List<Playlist>, badge: Stri
       Text(
         text = badge,
         modifier = Modifier.background(CardElevated, RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
-        color = AccentLavender,
+        color = AccentRose,
         fontSize = 8.sp,
         fontWeight = FontWeight.Bold
       )
@@ -2547,19 +2699,31 @@ private fun PlaylistSongPicker(tracks: List<Track>, alreadyAdded: List<String>, 
 }
 
 @Composable
-private fun TrackArtwork(track: Track, modifier: Modifier = Modifier) =
-  RemoteImage(track.remoteArtworkUrl ?: track.artworkPath, modifier)
+private fun TrackArtwork(track: Track, modifier: Modifier = Modifier, hiRes: Boolean = false) =
+  RemoteImage(track.remoteArtworkUrl ?: track.artworkPath, modifier, hiRes)
+
+// YouTube thumbnail URLs carry a size spec (…=w120-h120-l90-rj); bump it so the
+// hero panel doesn't upscale a 120px thumbnail. ~1400px is the server cap.
+private val ytThumbSize = Regex("=w\\d+-h\\d+")
+
+private fun hiResSource(source: String, hiRes: Boolean): String =
+  if (source.contains("googleusercontent.com") || source.contains("ggpht.com")) {
+    ytThumbSize.replace(source, if (hiRes) "=w1200-h1200" else "=w544-h544")
+  } else {
+    source
+  }
 
 @Composable
-private fun RemoteImage(source: String?, modifier: Modifier = Modifier) {
+private fun RemoteImage(source: String?, modifier: Modifier = Modifier, hiRes: Boolean = false) {
   var bitmap by remember(source) { mutableStateOf<ImageBitmap?>(null) }
   LaunchedEffect(source) {
     bitmap = if (source.isNullOrBlank()) null else withContext(Dispatchers.IO) {
       runCatching {
-        val bytes = if (source.startsWith("http://") || source.startsWith("https://")) {
-          URL(source).openStream().use { it.readBytes() }
+        val url = if (source.startsWith("http://") || source.startsWith("https://")) hiResSource(source, hiRes) else source
+        val bytes = if (url.startsWith("http://") || url.startsWith("https://")) {
+          URL(url).openStream().use { it.readBytes() }
         } else {
-          File(source).readBytes()
+          File(url).readBytes()
         }
         SkiaImage.makeFromEncoded(bytes).toComposeImageBitmap()
       }.getOrNull()
@@ -2567,7 +2731,7 @@ private fun RemoteImage(source: String?, modifier: Modifier = Modifier) {
   }
   Box(modifier.background(CardElevated), contentAlignment = Alignment.Center) {
     if (bitmap != null) {
-      Image(bitmap!!, contentDescription = "Artwork", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+      Image(bitmap!!, contentDescription = "Artwork", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, filterQuality = FilterQuality.High)
     } else {
       Label("♫", color = AccentRose, size = 28, weight = FontWeight.Bold)
     }
@@ -2674,17 +2838,26 @@ private fun EmptyState(title: String, detail: String) = Column(
 }
 
 @Composable
-private fun SettingBlock(section: String, title: String, detail: String) = Column(
+private fun SettingsSection(
+  section: String,
+  title: String,
+  detail: String,
+  content: (@Composable ColumnScope.() -> Unit)? = null
+) = Column(
   Modifier
     .fillMaxWidth()
     .background(CardGlass.copy(alpha = 0.65f), RoundedCornerShape(12.dp))
-    .padding(14.dp)
+    .padding(horizontal = 16.dp, vertical = 14.dp)
 ) {
   Label(section, color = AccentRose, size = 9, weight = FontWeight.Bold)
-  Spacer(Modifier.height(4.dp))
+  Spacer(Modifier.height(5.dp))
   Label(title, size = 13, weight = FontWeight.SemiBold)
-  Spacer(Modifier.height(3.dp))
+  Spacer(Modifier.height(4.dp))
   Label(detail, color = TextMuted, size = 11)
+  if (content != null) {
+    Spacer(Modifier.height(12.dp))
+    content()
+  }
 }
 
 @Composable

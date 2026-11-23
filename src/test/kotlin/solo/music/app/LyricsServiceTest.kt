@@ -24,7 +24,7 @@ class LyricsServiceTest {
     val cache = Files.createTempDirectory("solo-lyrics-test").toFile()
     try {
       val track = Track("yt:video", "https://youtube.com/watch?v=video", "Example Song", "Example Artist", durationMs = 180_000, videoId = "video")
-      val service = LyricsService(cache, "http://127.0.0.1:${server.address.port}")
+      val service = LyricsService(cache, "http://127.0.0.1:${server.address.port}", enabledProviders = setOf("lrclib"))
       val first = assertNotNull(service.get(track))
       assertEquals("LRCLIB", first.provider)
       assertTrue(first.synced)
@@ -68,7 +68,7 @@ class LyricsServiceTest {
     val cache = Files.createTempDirectory("solo-lyrics-title-search").toFile()
     try {
       val track = Track("yt:butta", "https://youtube.com/watch?v=butta", "Butta Bomma Full Song (From Ala Vaikunthapurramuloo) | Telugu Video Song", "Episode", durationMs = 254_000, videoId = "butta")
-      val result = LyricsService(cache, "http://127.0.0.1:${server.address.port}").get(track)
+      val result = LyricsService(cache, "http://127.0.0.1:${server.address.port}", enabledProviders = setOf("lrclib")).get(track)
       assertNotNull(result)
       assertEquals("Native lyric", result.lines.single().text)
       assertTrue(query.get().orEmpty().contains("track_name=Butta+Bomma"))
@@ -100,7 +100,7 @@ class LyricsServiceTest {
     try {
       val port = server.address.port
       val track = Track("local", "track.mp3", "Example Song", "Example Artist", durationMs = 180_000)
-      val result = LyricsService(cache, "http://127.0.0.1:$port", ovhBaseUrl = "http://127.0.0.1:$port").get(track)
+      val result = LyricsService(cache, "http://127.0.0.1:$port", ovhBaseUrl = "http://127.0.0.1:$port", enabledProviders = setOf("lrclib", "ovh")).get(track)
       assertNotNull(result)
       assertEquals("lyrics.ovh", result.provider)
       assertTrue(!result.synced)

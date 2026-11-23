@@ -94,25 +94,39 @@ class WindowsSmtcBridge(
 
   private fun ensureInitialized() {
     if (initialized) return
-    val appData = System.getenv("APPDATA") ?: File(System.getProperty("user.home"), "AppData/Roaming").path
-    val folder = File(appData, "SoloMusicPlayer/native")
-    check(folder.exists() || folder.mkdirs()) { "Cannot create the Solo Music Player native folder" }
-    val target = File(folder, DLL_NAME)
-    val staging = File(folder, "$DLL_NAME.tmp")
-    val resource = javaClass.getResourceAsStream("/native/$DLL_NAME")
-      ?: error("Windows media controls are missing from this build. Rebuild on Windows with Visual Studio C++ tools installed.")
-    resource.use { source -> staging.outputStream().use { destination -> source.copyTo(destination) } }
-    if (!staging.renameTo(target)) {
-      staging.copyTo(target, overwrite = true)
-      check(staging.delete() || !staging.exists()) { "Cannot replace the Windows media controls library" }
+    if (api == null) {
+      val appData = System.getenv("APPDATA") ?: File(System.getProperty("user.home"), "AppData/Roaming").path
+      val folder = File(appData, "SoloMusicPlayer/native")
+      check(folder.exists() || folder.mkdirs()) { "Cannot create the Solo Music Player native folder" }
+      val target = File(folder, DLL_NAME)
+      val staging = File(folder, "$DLL_NAME.tmp")
+      val resource = javaClass.getResourceAsStream("/native/$DLL_NAME")
+        ?: error("Windows media controls are missing from this build. Rebuild on Windows with Visual Studio C++ tools installed.")
+      resource.use { source -> staging.outputStream().use { destination -> source.copyTo(destination) } }
+      // Once any running Solo instance has loaded the DLL Windows keeps it
+      // locked, so a failed replace is fine as long as a copy is on disk.
+      val installed = staging.renameTo(target) || runCatching {
+        staging.copyTo(target, overwrite = true)
+        staging.delete()
+        true
+      }.getOrDefault(false)
+      if (!installed) {
+        staging.delete()
+        check(target.isFile) { "Cannot install the Windows media controls library" }
+      }
+      api = Native.load(target.absolutePath, SmtcNative::class.java)
     }
-    api = Native.load(target.absolutePath, SmtcNative::class.java)
     val window = findAppWindow()
       ?: error("Could not find the Solo Music Player window for Windows media controls")
     checkResult(api!!.SoloSmtcInitialize(window, callback))
+    // Publish an initial Paused state so Windows marks Solo as a live media
+    // session right away — without it, headset/Bluetooth buttons are not routed
+    // to us until the first real track update.
+    checkResult(api!!.SoloSmtcSetState(0, WString("Solo Music Player"), WString("")))
     initialized = true
     lastState = null
     reportedError = false
+    log("media controls initialized")
   }
 
   /** Locate our top-level window by process id — more reliable than matching the window title,

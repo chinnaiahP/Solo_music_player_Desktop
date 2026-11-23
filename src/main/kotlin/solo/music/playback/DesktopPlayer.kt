@@ -78,7 +78,13 @@ class DesktopPlayer {
   fun toggle() = fx {
     val player = mediaPlayer
     if (player == null) {
-      flow.value.current?.let { load(it, true) }
+      // Still buffering/loading — cancel the pending playback instead of starting it.
+      if (desiredPlayback) {
+        desiredPlayback = false
+        flow.update { it.copy(isPlaying = false) }
+      } else {
+        flow.value.current?.let { load(it, true) }
+      }
       return@fx
     }
     when (player.status) {
@@ -91,7 +97,11 @@ class DesktopPlayer {
 
   fun resume() = fx { resumeOnFx(mediaPlayer) }
 
-  fun pause() = fx { mediaPlayer?.let(::pauseOnFx) }
+  fun pause() = fx {
+    desiredPlayback = false
+    val player = mediaPlayer
+    if (player == null) flow.update { it.copy(isPlaying = false) } else pauseOnFx(player)
+  }
 
   private fun resumeOnFx(player: MediaPlayer?) {
     if (player == null) {
@@ -110,6 +120,7 @@ class DesktopPlayer {
   }
 
   fun stop() = fx {
+    desiredPlayback = false
     runCatching { mediaPlayer?.stop() }
     runCatching { mediaPlayer?.dispose() }
     mediaPlayer = null
@@ -207,7 +218,7 @@ class DesktopPlayer {
       }
       flow.update { it.copy(error = null) }
       resolver(track,
-        { resolved -> fx { if (flow.value.current?.id == resolved.id) load(resolved, autoPlay) } },
+        { resolved -> fx { if (flow.value.current?.id == resolved.id) load(resolved, desiredPlayback) } },
         { message -> fx { if (flow.value.current?.id == track.id) flow.update { it.copy(isPlaying = false, error = message) } } })
       return
     }
@@ -245,11 +256,21 @@ class DesktopPlayer {
           flow.update { it.copy(positionMs = value.toMillis().toLong().coerceAtLeast(0)) }
         }
       }
-      player.setOnError { if (mediaPlayer === player) flow.update { it.copy(isPlaying = false, error = media.error?.message ?: "Could not play this file") } }
-      media.setOnError { flow.update { it.copy(error = media.error?.message ?: "Unsupported audio format") } }
+      player.setOnError { if (mediaPlayer === player) flow.update { it.copy(isPlaying = false, error = friendlyMediaError(media.error?.message) ?: "Could not play this file") } }
+      media.setOnError { flow.update { it.copy(error = friendlyMediaError(media.error?.message) ?: "Unsupported audio format") } }
     } catch (error: Exception) {
-      flow.update { it.copy(isPlaying = false, error = error.message ?: "Could not open audio") }
+      flow.update { it.copy(isPlaying = false, error = friendlyMediaError(error.message) ?: "Could not open audio") }
     }
+  }
+
+  /** JavaFX media on Linux needs a system libavcodec matching its bundled plugins; when
+   * it is absent the engine just reports "Could not create player!" — surface the fix. */
+  private fun friendlyMediaError(message: String?): String? = when {
+    message.isNullOrBlank() -> null
+    message.contains("Could not create player", true) &&
+      System.getProperty("os.name").startsWith("Linux", ignoreCase = true) ->
+      "Audio codecs missing — install FFmpeg libraries (e.g. sudo apt install libavcodec61 libavformat61) and restart"
+    else -> message
   }
 
   private fun fx(action: () -> Unit) {

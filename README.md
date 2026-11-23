@@ -12,6 +12,7 @@ Solo Music Player is a Windows desktop application built as a standalone Kotlin/
 - Search across local track titles, artists, and albums; library, playlist, and listening-history views.
 - Editable playlists with artwork, add/remove songs, play all, shuffle, rename, delete, and custom ordering.
 - Synchronized local `.lrc` lyrics, keyboard shortcuts, and Solo-branded Windows installer configuration.
+- Online lyrics fetched in parallel from SimpMusic, YouLyPlus, PaxSenix (Apple Music), Unison, BetterLyrics, LRCLIB, KuGou, YouTube captions/lyrics, and lyrics.ovh — synced lyrics preferred, plain text estimated when nothing synced exists, with a manual sync-offset control.
 
 Keyboard shortcuts: **Space** toggles playback, **Ctrl+←/→** changes tracks, **Ctrl+K** focuses search, **Ctrl+L** toggles lyrics, and **Ctrl+O** opens the audio-file picker. Shortcuts yield to text entry; **Tab** remains normal focus navigation.
 
@@ -30,4 +31,25 @@ JDK 21 or newer is required. The build uses the installed JDK and emits Java 21-
 ```
 
 The MSI and EXE are Windows installers that bundle the app runtime; users do not need a separate JDK. The installer creates a Start Menu entry and desktop shortcut, supports choosing the installation folder, and adds an uninstall entry to Windows Apps. Installers are written under `build/compose/binaries/main/`. Build on Windows with a full JDK 21+ and Visual Studio C++ build tools (needed for the in-process Windows media controls). The app stores its library data and extracted artwork under `%APPDATA%\SoloMusicPlayer`.
+
+### Linux
+
+```bash
+./gradlew packageDeb
+```
+
+The `.deb` bundles the app runtime but does not declare system dependencies (the packaging DSL cannot express `Depends:`). JavaFX Media decodes compressed audio (AAC, MP3) through the system's FFmpeg libraries, which must be installed on the target machine:
+
+```bash
+# Ubuntu 24.10+ / Debian (libavcodec61)
+sudo apt install libavcodec61 libavformat61 libavutil59 libswresample8
+# Ubuntu 24.04 (libavcodec60) or older releases — install the version your distro ships
+sudo apt install ffmpeg
+```
+
+Without these libraries, playback fails with `MediaException: Could not create player!`. The bundled JavaFX 23 supports libavcodec versions 57 through 61.
+
+## Credits
+
+- [Echo Music](https://github.com/iad1tya/Echo-Music) — lyrics provider architecture adapted for the desktop: parallel provider fetching with priority ordering, the PaxSenix (Apple Music) provider with result scoring, and the metadata-cleaning pipeline used for search queries.
 
